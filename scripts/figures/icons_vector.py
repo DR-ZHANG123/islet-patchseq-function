@@ -3,7 +3,7 @@
 每个图标函数在示意画布（schematic.Canvas，毫米坐标，原点在左上角）上占据左上角 (x, y)、边长 s 毫米的正方形；
 函数内部使用单位坐标（0–1，y 向上），由 _unit() 换算到画布坐标。不读取任何外部图片或路径文件。
 图标：供体人体轮廓（胰腺突出）、胰岛细胞团（α/β 细胞两色）、单个胰岛细胞（细胞核、分泌颗粒、线粒体）、
-膜片钳电极接触细胞、同一供体的一组细胞；另有表达谱条形图与电生理曲线两个小图形。
+膜片钳电极接触细胞、同一供体的一组细胞、转录本、液滴测序通道、质膜下的胰岛素颗粒；另有表达谱条形图与电生理曲线两个小图形。
 """
 from __future__ import annotations
 
@@ -170,7 +170,51 @@ def reference(ax, x, y, s, H):
                    lw=0.6)
 
 
-ICONS = {"donor": donor, "islet": islet, "cell": single_cell, "patch": patch, "reference": reference}
+def mrna(ax, x, y, s, H):
+    """转录本：三条波浪形 RNA 链，带 5′ 帽（圆点）与 3′ poly(A) 尾（短竖线）。"""
+    T = _unit(ax, x, y, s, H)
+    t = np.linspace(0.08, 0.80, 120)
+    for k, (yy, col) in enumerate(((0.72, "#2A9D8F"), (0.50, "#5FB8AC"), (0.28, "#2A9D8F"))):
+        ax.plot(t, yy + 0.05 * np.sin(2 * np.pi * (t * 3.2 + k * 0.3)), color=col, lw=1.1, transform=T,
+                solid_capstyle="round")
+        ax.add_patch(Circle((0.07, yy + 0.05 * np.sin(2 * np.pi * (0.08 * 3.2 + k * 0.3))), 0.035, fc="#7B5EA7",
+                            ec="none", transform=T))
+        for j in range(4):
+            ax.plot([0.83 + j * 0.035] * 2, [yy - 0.03, yy + 0.03], color="#9AA4AE", lw=0.7, transform=T)
+
+
+def droplet_atlas(ax, x, y, s, H):
+    """液滴单细胞测序：微流控通道中的液滴，部分包裹单个细胞。"""
+    T = _unit(ax, x, y, s, H)
+    ax.add_patch(Rectangle((0.02, 0.32), 0.96, 0.36, fc="#EEF3F7", ec="#9AA4AE", lw=0.6, transform=T))
+    for k, cx in enumerate((0.14, 0.33, 0.52, 0.71, 0.88)):
+        ax.add_patch(Circle((cx, 0.5), 0.085, fc="#F7FBFD", ec="#7A97AE", lw=0.6, transform=T))
+        if k in (0, 2, 3):
+            islet_cell(ax, T, cx, 0.5, 0.045, "beta" if k != 3 else "alpha", seed=60 + k, detail=0, lw=0.45)
+    for k, cx in enumerate((0.20, 0.45, 0.70)):
+        ax.add_patch(Rectangle((cx - 0.06, 0.08), 0.12, 0.14, fc="#2A9D8F" if k != 1 else "#C8811B", ec="none",
+                               alpha=0.75, transform=T))
+        ax.add_patch(Rectangle((cx - 0.06, 0.78), 0.12, 0.10 + 0.04 * k, fc="#7B5EA7", ec="none", alpha=0.55,
+                               transform=T))
+
+
+def granule_membrane(ax, x, y, s, H):
+    """质膜与胰岛素颗粒：膜下已停靠/引发的颗粒（早期释放）与深处向膜移动的颗粒（持续释放）；膜上 Ca2+ 通道。"""
+    T = _unit(ax, x, y, s, H)
+    ax.add_patch(Rectangle((0.0, 0.84), 1.0, 0.07, fc="#F5D5C8", ec="#C8644F", lw=0.6, transform=T))
+    ax.add_patch(Rectangle((0.62, 0.80), 0.07, 0.15, fc="#2C6FB0", ec="none", transform=T))
+    for cx in (0.18, 0.36, 0.84):
+        ax.add_patch(Circle((cx, 0.74), 0.075, fc=GRAN_HALO, ec=GRAN_CORE, lw=0.6, transform=T))
+        ax.add_patch(Circle((cx, 0.74), 0.035, fc=GRAN_CORE, ec="none", transform=T))
+    for cx, cy in ((0.22, 0.30), (0.45, 0.20), (0.70, 0.34)):
+        ax.add_patch(Circle((cx, cy), 0.075, fc=GRAN_HALO, ec=GRAN_CORE, lw=0.6, transform=T))
+        ax.add_patch(Circle((cx, cy), 0.035, fc=GRAN_CORE, ec="none", transform=T))
+        ax.annotate("", xy=(cx + 0.02, cy + 0.24), xytext=(cx, cy + 0.09), xycoords=T, textcoords=T,
+                    arrowprops=dict(arrowstyle="-|>", color="#9AA4AE", lw=0.6, mutation_scale=5))
+
+
+ICONS = {"donor": donor, "islet": islet, "cell": single_cell, "patch": patch, "reference": reference,
+         "mrna": mrna, "droplet_atlas": droplet_atlas, "granules": granule_membrane}
 
 
 # ------------------------------------------------------------------ 小图形（毫米坐标）

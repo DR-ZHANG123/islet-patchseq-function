@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import numpy as np
-from matplotlib.patches import Circle, Ellipse, Polygon, Rectangle
+from matplotlib.patches import Circle, Ellipse, FancyBboxPatch, Polygon, Rectangle
 from matplotlib.transforms import Affine2D
 
 # 配色：与 figstyle.TYPE_COLORS 一致（β 细胞青绿、α 细胞琥珀），浅色填充、深色描边
@@ -191,18 +191,21 @@ def droplet_atlas(ax, x, y, s, H):
         ax.add_patch(Circle((cx, 0.5), 0.085, fc="#F7FBFD", ec="#7A97AE", lw=0.6, transform=T))
         if k in (0, 2, 3):
             islet_cell(ax, T, cx, 0.5, 0.045, "beta" if k != 3 else "alpha", seed=60 + k, detail=0, lw=0.45)
-    for k, cx in enumerate((0.20, 0.45, 0.70)):
-        ax.add_patch(Rectangle((cx - 0.06, 0.08), 0.12, 0.14, fc="#2A9D8F" if k != 1 else "#C8811B", ec="none",
-                               alpha=0.75, transform=T))
-        ax.add_patch(Rectangle((cx - 0.06, 0.78), 0.12, 0.10 + 0.04 * k, fc="#7B5EA7", ec="none", alpha=0.55,
-                               transform=T))
 
 
 def granule_membrane(ax, x, y, s, H):
     """质膜与胰岛素颗粒：膜下已停靠/引发的颗粒（早期释放）与深处向膜移动的颗粒（持续释放）；膜上 Ca2+ 通道。"""
     T = _unit(ax, x, y, s, H)
-    ax.add_patch(Rectangle((0.0, 0.84), 1.0, 0.07, fc="#F5D5C8", ec="#C8644F", lw=0.6, transform=T))
-    ax.add_patch(Rectangle((0.62, 0.80), 0.07, 0.15, fc="#2C6FB0", ec="none", transform=T))
+    ax.add_patch(Rectangle((0.0, 0.845), 1.0, 0.06, fc="#FBEAE3", ec="none", transform=T))      # 双层膜
+    for yy in (0.845, 0.905):
+        ax.plot([0.0, 0.58], [yy, yy], color="#C8644F", lw=0.7, transform=T)
+        ax.plot([0.73, 1.0], [yy, yy], color="#C8644F", lw=0.7, transform=T)
+    for x0 in (0.585, 0.665):                                                       # Ca2+ 通道：两个亚基围成孔道
+        ax.add_patch(FancyBboxPatch((x0, 0.815), 0.05, 0.12, boxstyle="round,pad=0,rounding_size=0.02",
+                                    fc="#2C6FB0", ec="#1F4E7A", lw=0.5, transform=T))
+    ax.add_patch(Circle((0.66, 0.975), 0.018, fc="#2C6FB0", ec="none", transform=T))      # Ca2+ 离子
+    ax.annotate("", xy=(0.66, 0.79), xytext=(0.66, 0.955), xycoords=T, textcoords=T,
+                arrowprops=dict(arrowstyle="-|>", color="#2C6FB0", lw=0.6, mutation_scale=5))
     for cx in (0.18, 0.36, 0.84):
         ax.add_patch(Circle((cx, 0.74), 0.075, fc=GRAN_HALO, ec=GRAN_CORE, lw=0.6, transform=T))
         ax.add_patch(Circle((cx, 0.74), 0.035, fc=GRAN_CORE, ec="none", transform=T))

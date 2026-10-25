@@ -1,7 +1,8 @@
 """示意图（Fig. 1、图形摘要）的共用画布：毫米坐标、方框、箭头、文字、图标与版面自查。
 
-文字、方框、箭头和图标全部由 matplotlib 绘制（图标见 icons_vector.py，均为代码生成的矢量图形），
-直接输出 SVG（文字保留为可编辑文本）、PDF（嵌入字体的矢量图）与 300 dpi PNG，不嵌入任何位图。
+文字、方框、箭头和代码图标由 matplotlib 绘制（见 icons_vector.py）；Canvas.image 可另外嵌入透明背景的
+PNG 图标（Fig. 1 的 AI 生成示意图标，见 assets/ai_icons/README.md），其余元素仍为矢量。
+输出 SVG（文字保留为可编辑文本）、PDF（嵌入字体）与 300 dpi PNG。
 
 版面自查（check）在合成前运行，命中即报告：文字与文字重叠、文字压图标、文字压箭头或分隔线、
 文字跨越方框边线（只有一部分在框内）、箭头穿过图标主体、字号低于下限。设置 FIG_OVERLAP_REPORT=1 时
@@ -34,6 +35,7 @@ class Canvas:
         self.boxes: list[tuple[float, float, float, float]] = []
         self.segments: list[tuple[float, float, float, float]] = []
         self.icons: dict[str, tuple[float, float, float]] = {}
+        self.images: list[tuple[str, float, float, float, float]] = []
 
     def mm(self, x, y):
         return x, self.H - y
@@ -61,6 +63,19 @@ class Canvas:
         """在左上角 (x, y)、边长 s 毫米的正方形内绘制矢量图标，并登记其范围供版面自查。"""
         ICONS[name](self.ax, x, y, s, self.H)
         self.icons[name] = (x, y, s)
+
+    def image(self, path, x, y, w, dpi=600):
+        """把透明背景的 PNG 图标按原宽高比置于左上角 (x, y)、宽 w 毫米处（按 dpi 重采样），返回高度（毫米）。"""
+        from PIL import Image
+        im = Image.open(path).convert("RGBA")
+        h = w * im.height / im.width
+        px = max(1, int(round(w / 25.4 * dpi)))
+        im = im.resize((px, max(1, int(round(px * im.height / im.width)))), Image.LANCZOS)
+        self.ax.imshow(np.asarray(im), extent=(x, x + w, self.H - (y + h), self.H - y), interpolation="lanczos",
+                       zorder=2)
+        self.ax.set_xlim(0, self.W); self.ax.set_ylim(0, self.H)
+        self.images.append((Path(path).stem, x, y, w, h))
+        return h
 
     def add_axes(self, x, y, w, h):
         """左上角 (x, y) 处宽 w、高 h（毫米）的子坐标轴。"""
@@ -99,6 +114,16 @@ class Canvas:
                 q = 0.2 * s
                 if ((px > ix + q) & (px < ix + s - q) & (py > iy + q) & (py < iy + s - q)).any():
                     issues.append(f"arrow/line crosses icon {name}")
+        for name, ix, iy, w, h in self.images:         # 位图图标：内缩 5% 的矩形不得压文字或被箭头穿过
+            px_, py_ = 0.05 * w, 0.05 * h
+            for lab, _, x0, y0, x1, y1 in tb:
+                if x0 < ix + w - px_ and x1 > ix + px_ and y0 < iy + h - py_ and y1 > iy + py_:
+                    issues.append(f"text '{lab}' overlaps image {name}")
+            for (ax0, ay0, ax1, ay1) in self.segments:
+                t = np.linspace(0, 1, 60)
+                px, py = ax0 + t * (ax1 - ax0), ay0 + t * (ay1 - ay0)
+                if ((px > ix + 0.15 * w) & (px < ix + 0.85 * w) & (py > iy + 0.15 * h) & (py < iy + 0.85 * h)).any():
+                    issues.append(f"arrow/line crosses image {name}")
         for lab, _, x0, y0, x1, y1 in tb:
             for (ax0, ay0, ax1, ay1) in self.segments:
                 t = np.linspace(0, 1, 120)
@@ -121,9 +146,11 @@ class Canvas:
     def compose(self, out_stem: Path, png_px: int) -> None:
         """按画布原尺寸（不裁边）输出 SVG、PDF 与 PNG；PNG 宽 png_px 像素并记录为 300 dpi。"""
         out_stem.parent.mkdir(parents=True, exist_ok=True)
-        with mpl.rc_context({"svg.fonttype": "none", "pdf.fonttype": 42, "savefig.bbox": "standard"}):
-            self.fig.savefig(out_stem.with_suffix(".svg"), bbox_inches=None, pad_inches=0)
-            self.fig.savefig(out_stem.with_suffix(".pdf"), bbox_inches=None, pad_inches=0)
+        vec_dpi = 600 if self.images else None          # 嵌入的 PNG 图标在 PDF/SVG 中保留 600 dpi，且不合并为一张图
+        with mpl.rc_context({"svg.fonttype": "none", "pdf.fonttype": 42, "savefig.bbox": "standard",
+                             "image.composite_image": False}):
+            self.fig.savefig(out_stem.with_suffix(".svg"), bbox_inches=None, pad_inches=0, dpi=vec_dpi or "figure")
+            self.fig.savefig(out_stem.with_suffix(".pdf"), bbox_inches=None, pad_inches=0, dpi=vec_dpi or "figure")
             self.fig.savefig(out_stem.with_suffix(".png"), bbox_inches=None, pad_inches=0,
                              dpi=png_px / (self.W / 25.4), facecolor="white")
         plt.close(self.fig)

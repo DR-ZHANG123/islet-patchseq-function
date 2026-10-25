@@ -9,7 +9,7 @@ patch-clamp electrophysiology of the same cell). The code asks two questions:
    Universal Cell Embeddings) are compared.
 2. Is the smaller exocytosis of beta cells from donors with type 2 diabetes carried by their transcriptomes? Measured
    differences are conditioned on expression components, on internal and external type 2 diabetes signatures, on
-   exocytosis and granule genes and on *ETV1*, with placebo and permutation null distributions and simulated carriers.
+   exocytosis and granule genes and on *ETV1*, with shuffled controls and simulated carriers.
 
 Evaluation always holds out whole donors, and inference resamples or permutes donors, the unit of biological replication.
 

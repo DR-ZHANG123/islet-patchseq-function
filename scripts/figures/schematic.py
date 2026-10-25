@@ -1,7 +1,7 @@
 """示意图（Fig. 1、图形摘要）的共用画布：毫米坐标、方框、箭头、文字、图标与版面自查。
 
-文字、方框、箭头和代码图标由 matplotlib 绘制（见 icons_vector.py）；Canvas.image 可另外嵌入透明背景的
-PNG 图标（Fig. 1 的 AI 生成示意图标，见 assets/ai_icons/README.md），其余元素仍为矢量。
+文字、方框、箭头和代码图标由 matplotlib 绘制（见 icons_vector.py）；Canvas.vector_icon 绘制由 PNG 描摹得到的
+矢量图标（Fig. 1 的 AI 生成示意图标，见 assets/ai_icons/README.md），整图仍为矢量；Canvas.image 可嵌入位图（备用）。
 输出 SVG（文字保留为可编辑文本）、PDF（嵌入字体）与 300 dpi PNG。
 
 版面自查（check）在合成前运行，命中即报告：文字与文字重叠、文字压图标、文字压箭头或分隔线、
@@ -36,6 +36,7 @@ class Canvas:
         self.segments: list[tuple[float, float, float, float]] = []
         self.icons: dict[str, tuple[float, float, float]] = {}
         self.images: list[tuple[str, float, float, float, float]] = []
+        self.vicons: list[tuple[str, float, float, float, float]] = []
 
     def mm(self, x, y):
         return x, self.H - y
@@ -63,6 +64,33 @@ class Canvas:
         """在左上角 (x, y)、边长 s 毫米的正方形内绘制矢量图标，并登记其范围供版面自查。"""
         ICONS[name](self.ax, x, y, s, self.H)
         self.icons[name] = (x, y, s)
+
+    def vector_icon(self, svg_path, x, y, w):
+        """把矢量图标（只含 M/C/Z 绝对坐标路径、填充色与平移的 SVG，见 assets/ai_icons/vector）按原宽高比画在
+        左上角 (x, y)、宽 w 毫米处，全部为矢量路径；返回高度（毫米）。"""
+        import re
+        from matplotlib.path import Path as MPath
+        from matplotlib.patches import PathPatch
+        t = Path(svg_path).read_text()
+        sw = float(re.search(r'<svg[^>]*\swidth="([\d.]+)"', t).group(1))
+        sh = float(re.search(r'<svg[^>]*\sheight="([\d.]+)"', t).group(1))
+        k = w / sw
+        h = sh * k
+        for m in re.finditer(r'<path d="([^"]+)" fill="([^"]+)"(?: transform="translate\(([-\d.]+),([-\d.]+)\)")?', t):
+            tx, ty = float(m.group(3) or 0), float(m.group(4) or 0)
+            verts, codes = [], []
+            for cmd, nums in re.findall(r"([MCZ])([^MCZ]*)", m.group(1)):
+                v = [float(n) for n in nums.split()]
+                pts = [(x + (v[i] + tx) * k, self.H - (y + (v[i + 1] + ty) * k)) for i in range(0, len(v), 2)]
+                if cmd == "M":
+                    verts += pts[:1]; codes += [MPath.MOVETO]
+                elif cmd == "C":
+                    verts += pts; codes += [MPath.CURVE4] * len(pts)
+                else:
+                    verts += [verts[-1] if verts else (x, self.H - y)]; codes += [MPath.CLOSEPOLY]
+            self.ax.add_patch(PathPatch(MPath(verts, codes), fc=m.group(2), ec="none", lw=0, zorder=2))
+        self.vicons.append((Path(svg_path).stem, x, y, w, h))
+        return h
 
     def image(self, path, x, y, w, dpi=600):
         """把透明背景的 PNG 图标按原宽高比置于左上角 (x, y)、宽 w 毫米处（按 dpi 重采样），返回高度（毫米）。"""
@@ -114,7 +142,7 @@ class Canvas:
                 q = 0.2 * s
                 if ((px > ix + q) & (px < ix + s - q) & (py > iy + q) & (py < iy + s - q)).any():
                     issues.append(f"arrow/line crosses icon {name}")
-        for name, ix, iy, w, h in self.images:         # 位图图标：内缩 5% 的矩形不得压文字或被箭头穿过
+        for name, ix, iy, w, h in self.images + self.vicons:   # 位图/矢量图标：内缩 5% 的矩形不得压文字或被箭头穿过
             px_, py_ = 0.05 * w, 0.05 * h
             for lab, _, x0, y0, x1, y1 in tb:
                 if x0 < ix + w - px_ and x1 > ix + px_ and y0 < iy + h - py_ and y1 > iy + py_:

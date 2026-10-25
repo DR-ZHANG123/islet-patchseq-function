@@ -50,8 +50,9 @@ Every tunable parameter, including random seeds, is in `config/run.yaml`. Each s
 `results/<stage>/` together with a `PROVENANCE.json` (input and output checksums, seed, configuration hash and
 software versions). Figure scripts in `scripts/figures/` read only these tables and save their plotting inputs to
 `figures/source_data/`.
-The study-design figure (`Fig1_framework.py`) embeds the explanatory icons in `scripts/figures/assets/ai_icons/`,
-which were generated once with GPT-Image-2 (prompts in `PROMPTS.tsv`); with `FIG_AI_ICONS=0` it draws all icons in code.
+The study-design figure (`Fig1_framework.py`) is entirely vector. Its individual explanatory icons were generated once
+with GPT-Image-2 (prompts in `PROMPTS.tsv`) and traced to vector paths (`scripts/figures/assets/ai_icons/vector/`);
+all other elements are drawn in code. With `FIG_AI_ICONS=0` the icons are drawn in code as well.
 
 | Stages | Content |
 |---|---|

@@ -1,0 +1,478 @@
+# islet_patchseq 全部可调参数；脚本只从这里读取
+seed: 20261020
+
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+
+download:
+  humanislets_api: https://api2.xialab.ca/api/
+  humanislets_patchseq_files: [ephys_cell.csv, sc_Beta_1.h5, sc_Beta_5.h5, sc_Beta_10.h5,
+                               sc_Alpha_1.h5, sc_Alpha_5.h5, sc_Alpha_10.h5]
+  humanislets_donor_tables: [donor, isolation, ephys_donor, gsis, cell_pro]
+  humanislets_secretion_tables: [peri_gluc]   # 胰岛灌流胰岛素分泌（附 function_summary 的 AUC 汇总），存于 raw/humanislets_omics
+  geo_counts:
+    GSE124742: GSE124nnn/GSE124742/suppl/GSE124742_All_human.counts.tab.gz
+    GSE164875: GSE164nnn/GSE164875/suppl/GSE164875_pclamp_v2_counts.tab.gz
+    GSE270484: GSE270nnn/GSE270484/suppl/GSE270484_PatchSeqCountTable.csv.gz
+  camunas_repo: https://raw.githubusercontent.com/jcamunas/patchseq/master/data/
+  camunas_files: [patchclamp_FACS_human.metadata.tab, patchclamp_wcryo_human.metadata.tab, siRNA_betacell.csv]
+  jci2025_pmcid: PMC12646676
+  geo_soft: [GSE164875, GSE270484]
+  pankbase_api: https://api.data.pankbase.org
+  pankbase_s3: https://pankbase-data-v1.s3.us-west-2.amazonaws.com/processed_data/single_cell_RNA/scRNA_matrices
+  bandesh2026_esm: https://media.springernature.com/original/springer-static/esm/art%3A10.1038%2Fs44318-026-00744-w/MediaObjects/44318_2026_744_MOESM10_ESM.xlsx   # Bandesh 等 2026 EMBO J，Dataset EV7（各细胞类型 T2D vs ND 差异表达）
+
+dataset:
+  cell_types: [Beta, Alpha]
+  glucose_levels: [1, 5, 10]
+  min_cell_score: 0.5          # 投射注释的细胞类型置信度下限
+  # 终点：列名 → (短名, 变换)。log1p 用于非负电流/胞吐量；log 用于细胞大小；none 用于半失活电压
+  endpoint_panel:
+    cell_size_pF_cell: [size, log]
+    total_exocytosis_fF_pF_cell: [exocytosis, log1p]
+    early_exocytosis_fF_pF_cell: [early_exocytosis, log1p]
+    late_exocytosis_fF_pF_cell: [late_exocytosis, log1p]
+    calcium_entry_pC_pF_cell: [calcium_entry, log1p]
+    early_ca_current_pA_pF_cell: [early_ca_current, log1p]
+    late_ca_current_pA_pF: [late_ca_current, log1p]
+    na_current_amp_pA_pF_cell: [sodium_current, log1p]
+    na_half_inactivation_mV_cell: [na_half_inactivation, none]
+
+features:
+  n_hvg: 2000            # 训练折内按离散度选择的高变基因数
+  min_mean: 0.1          # 高变基因的最低平均 log 表达
+  scale_factor: 10000    # 每细胞归一化总量
+
+cv:
+  external_site: HPAP    # 外部测试：HPAP 供体，开发阶段不参与任何选择
+  outer_folds: 10
+  repeats: 5
+  inner_folds: 5
+  min_group: 3           # 供体均值层面：比较组内最少细胞数
+  min_within: 5          # 逐组供体内 Spearman：最少细胞数
+
+model:
+  alphas: [1, 3, 10, 30, 100, 300, 1000, 3000, 10000, 30000, 100000]
+  within_lambdas: [0, 1, 4]          # 供体内差分监督权重
+  gates: [0, 0.25, 0.5, 0.75, 1]      # 供体分支在供体层面的合成权重
+  n_boost_features: 500               # 梯度提升树使用的高变基因数（按离散度排序的前 n 个）
+
+nets:
+  seeds: 3               # 每折神经网络训练的随机种子数（取平均）
+
+context_tests:
+  endpoints: [size, exocytosis, early_exocytosis, late_exocytosis, calcium_entry, early_ca_current, late_ca_current, sodium_current, na_half_inactivation]
+  context_sizes: [1, 2, 3, 5, 10]
+  draws: 5
+  repeats: 3
+
+donor_level:
+  min_cells: 3           # 供体层面终点所需的最少细胞数
+  n_genes: 2000          # 训练供体中方差最大的基因数
+  min_logcpm: 3.0        # 伪 bulk 最低平均 log1p(CPM)
+  inner_folds: 5
+  repeats: 5
+  folds: 10
+
+external:
+  n_boot: 500
+  device: cuda:0
+  ci_models: [context_model, cell_branch, ridge, gradient_boosting, knn_predictive_set, elastic_net, mlp_cell]
+
+atlas:
+  treatment: no_treatment
+  min_cells: 20          # 供体伪 bulk 所需的最少细胞数
+
+variance:
+  n_boot: 200            # ICC 按供体重抽样次数
+
+programmes:
+  endpoints:
+    Beta: [sodium_current, size, calcium_entry, late_ca_current, exocytosis]
+    Alpha: [sodium_current, size, exocytosis, early_ca_current, late_ca_current]
+  min_detect: 0.2        # 至少在该比例细胞中检出的基因
+  n_perm: 1000
+  top_n: 100
+  gsea_perm: 1000
+  libraries: [GO_Biological_Process_2025, MSigDB_Hallmark_2020]
+
+summary:
+  n_boot: 1000           # 按供体重抽样次数（置信区间与配对差值）
+  jobs: 36
+
+t2d:
+  # 两部分模型（非零反应概率 + 正值的对数，均含供体随机截距）与按供体加权的分位数比；P 值来自来源中心内供体标签置换
+  endpoints: [exocytosis, early_exocytosis, late_exocytosis, calcium_entry, sodium_current, size]
+  quantiles: [0.25, 0.5, 0.75, 0.9]  # 原始尺度（含零值）与正值部分的 T2D/ND 分位数比
+  tail_quantiles: [0.5, 0.9]         # 上尾增强检验：q90 比值 / q50 比值
+  high_thresholds: [0.75, 0.9]       # 高功能细胞：高于同葡萄糖、同中心 ND 细胞该分位数
+  n_boot: 2000                       # 按供体（状态 × 中心分层）重抽样次数 → 置信区间
+  n_perm: 5000                       # 中心内供体状态标签置换次数 → P 值（下限 1/5001）
+  weighting: donor                   # 分位数回归中每位供体等权（每个细胞权重 1/n_d）
+  gh_nodes: 30                       # 随机截距 logistic 模型的 Gauss–Hermite 节点数
+  logit_ridge: 0.01                  # logistic 非截距系数的弱 L2 罚（防完全分离）
+  min_zero_cells: 20                 # 零值细胞少于此数时不拟合非零反应部分
+  min_sd_df: 2                       # 供体内离散度：每位供体所需的最小自由度
+  min_nd_threshold_cells: 10         # 高功能阈值：每个 葡萄糖 × 中心 层所需的最少 ND 细胞
+  robustness_endpoints: [exocytosis, early_exocytosis, late_exocytosis, calcium_entry, sodium_current]
+  robustness_quantiles: [0.5, 0.9]
+  robustness: [isletcore, hpap, glucose5, age_sex_bmi, clinical_t2d, isletcore_isolation, cell_weighted]
+  isolation_covariates: [coldischemiatime, predistributionculturetime, isolation_year]
+  n_jobs: 32                         # 进程数；每个进程内线程数限制为 1
+  coupling_threads: 4                # 对应关系模型：每个进程的线程数（进程数 = n_jobs / coupling_threads）
+  coupling_n_boot: 5000
+  equivalence_margin: 0.10           # 供体内 r 的 T2D − ND 等效性界值
+  coupling_endpoints:
+    Beta: [sodium_current, size, calcium_entry, late_ca_current]
+    Alpha: [sodium_current, size, early_ca_current, late_ca_current, exocytosis, early_exocytosis]
+
+
+t2d_hidden:                  # Stage 09c：T2D 差异在转录组预测值中是否可见（ND 训练的对称留出供体预测）
+  n_boot: 2000               # 状态 × 中心分层的供体重抽样
+  n_perm: 5000               # 中心内 ND/T2D 供体标签置换
+  n_jobs: 32
+  threads: 4                 # 预测：每个进程的线程数（进程数 = n_jobs / threads）
+t2d_signature:               # Stage 09d：β 细胞 T2D 转录特征是否携带胞吐缺陷（留出供体推导特征 + 中介分析）
+  cell_type: Beta
+  n_genes: 50                # 特征：T2D 与 ND 供体汇总表达 t 统计量最高、最低各 n 个基因
+  sensitivity_n_genes: [25, 100]
+  min_cpm: 10                # 供体汇总表达的最低平均 CPM
+  n_boot: 2000               # 状态 × 中心分层的供体重抽样（特征得分固定）
+  n_perm: 2000               # 中心内 ND/T2D 供体标签置换；每次置换重新推导特征
+  n_jobs: 32
+t2d_robust:                  # Stage 09f：T2D 胞吐差异不由转录组携带这一结论的边界（分解、模拟、安慰剂、Ca2+ 校正、特征稳定性）
+  between_pcs: [3, 5, 10, 20]  # 供体均值主成分个数（供体约 60 位，不超过 20）
+  within_pcs: 50               # 供体内主成分个数（同 Stage 09e 主分析）
+  n_boot: 1000                 # 状态 × 中心分层的供体重抽样
+  n_boot_relaxed: 500
+  small_n_genes: 10            # 小特征：上调、下调各 10 个基因
+  external_file: data/raw/bandesh2026/44318_2026_744_MOESM10_ESM.xlsx
+  external_fdr: 0.05
+  sim_pi: [0.0, 0.5, 1.0]      # 模拟中由携带者承担的缺陷比例
+  sim_rhos: [0.0, 0.25, 0.5]   # 带噪携带者中供体内特征的权重（其余为非转录噪声）
+  sim_estimators: [full50, mundlak10, between10]
+  n_boot_sim: 500
+  n_placebo: 1000              # 供体均值主成分在供体间置换的次数
+  null_pcs: [20, 50]           # 供体内结局置换零分布使用的主成分个数
+  n_within_null: 300
+  ca_lambdas: [1.0, 0.8, 0.6, 0.4, 0.3, 0.2]   # Ca2+ 进入的供体内信度（回归校准）
+  n_rep_signature: 384         # 每次重新推导特征的重抽样次数
+  nd_seeds: 4                  # ND 训练模型换种子重复次数
+  n_boot_diag: 2000
+  n_jobs: 32
+t2d_conditioned:             # Stage 09e：以细胞自身转录组为条件后的 T2D 效应（主成分调整 + 交叉拟合岭回归 + 半合成检验）
+  n_hvg: 2000                # 高变基因数（ND/糖尿病前期/T2D 全部细胞上按方差选择，无监督）
+  n_pcs: [10, 20, 50, 100]   # 加入供体等权模型的主成分数
+  main_pcs: 50               # 主分析的主成分数
+  ridge_alphas: [1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0]
+  folds: 5                   # 交叉拟合：按供体分折
+  n_boot: 2000               # 状态 × 中心分层的供体重抽样（表达表示固定）
+  n_perm: 2000               # 中心内 ND/T2D 供体标签置换（总效应与直接效应的 P 值）
+  synthetic_pi: [0.5, 1.0]   # 半合成：由 T2D 转录特征携带的缺陷比例
+  n_boot_synthetic: 1000
+  n_jobs: 32
+t2d_sensitivity:             # Stage 09b：β 细胞胞吐 T2D 效应的敏感性分析（与 Stage 09 相同的模型与供体层面推断）
+  cell_type: Beta
+  endpoints: [exocytosis, late_exocytosis]          # 反应阈值与有符号值分析的终点
+  thresholds: [0.5, 1.0, 2.0]                       # 反应 = y > c（fF/pF）；c = 0 为主分析
+  nd_positive_quantile: 0.10                        # 另加阈值：ND 细胞正值的该分位数
+  conditional_endpoints: [exocytosis, early_exocytosis, late_exocytosis]
+  conditional_sets:                                 # 细胞层面协变量（同一完整病例子集上比较调整前后）
+    ca_entry_size: [calcium_entry, size]
+    ca_entry_currents_size: [calcium_entry, early_ca_current, late_ca_current, size]
+  covariate_transform: {calcium_entry: log1p, early_ca_current: log1p, late_ca_current: log1p, size: log}
+  tobit_gh_nodes: 20                                # 随机截距 Tobit 的 Gauss–Hermite 节点数
+  signed_tolerance: 0.05                            # 总 = 早 + 晚 恒等式的容差（fF/pF）
+  equivalence_or_margins: [1.5, 2.0]                # 反应比值比的对称等效界
+  equivalence_share_margins: [0.05, 0.10]           # 反应细胞比例差的等效界
+  n_boot: 2000
+  n_perm: 2000
+  n_jobs: 32
+
+programme_qc:                # Stage 08b：Fig. 6 基因关联与 hallmark 富集在控制质控协变量后的敏感性
+  qc_covariates: [log_n_genes, log_n_counts, mito_fraction, own_hormone_fraction, ambient]   # ambient = 他类激素 log1p(CPM)
+  size_endpoints: [sodium_current, early_ca_current, late_ca_current, calcium_entry]         # 离子电流类终点另加 log 细胞大小
+  endpoints:                 # Fig. 6c 的终点
+    Beta: [sodium_current, late_ca_current, calcium_entry, size, exocytosis]
+    Alpha: [sodium_current, early_ca_current, late_ca_current, size, exocytosis]
+  featured_genes:
+    Beta: {sodium_current: [SCN3A, ATF4, FXYD2, CD9]}
+    Alpha: {sodium_current: [GCG, SCN3A, SLC30A8, PPP1R15A, SQSTM1]}
+  library: MSigDB_Hallmark_2020
+  featured_terms: [Unfolded Protein Response, Pancreas Beta Cells, TNF-alpha Signaling via NF-kB,
+                   Oxidative Phosphorylation, Hypoxia, mTORC1 Signaling, p53 Pathway, Apoptosis]
+  gsea_threads: 8
+  numpy_threads: 16
+
+external_ceiling:
+  folds: 5
+  repeats: 3
+
+calibration:                 # Stage 06d：绝对尺度校准（只读 Stage 03/06/06c 已存预测，不重新训练）；重抽样次数用 external.n_boot
+  models: [cell_branch, context_model, ridge, gradient_boosting, knn_predictive_set]   # 第一个模型的行用于计算开发折训练均值
+  min_within: 2              # 供体内斜率：比较组（供体 × 葡萄糖）最少细胞数
+  min_level_cells: 10        # 按葡萄糖浓度报告位置偏移所需的最少细胞数
+  min_level_donors: 3        # 以及最少供体数（HPAP β 细胞几乎全在 5 mM）
+  crossplatform_inputs: [Patch-seq profile, Droplet profile]   # 共同供体配对差值 = 前者 − 后者
+  jobs: 40                   # 并行进程数（每进程单线程）
+
+robustness:                  # Stage 04b–04f：供体层面校准、可靠性上限、训练规模与技术协变量对照（只用开发供体）
+  jobs: 60                   # 并行进程数（每进程单线程）
+  repeats: {Beta: 20, Alpha: 5}   # standard 设定的交叉验证重复次数（前 5 次与 Stage 03 相同）；β 细胞供体层面差值最不稳定
+  variant_repeats: 5         # 扩展网格、留一参照、QC 残差化各自的重复次数（与 standard 同折配对）
+  alphas_extended: [1, 3, 10, 30, 100, 300, 1000, 3000, 10000, 30000, 100000, 300000, 1000000,
+                    3000000, 10000000, 100000000]   # 10^8 时预测实际等于训练均值
+  perm_null:
+    n_perm: 100             # 供体层面置换次数（每个细胞类型 × 终点）
+    partitions: 2            # 置换零模型复用的折划分数（Stage 03 的前 2 个重复；每个划分 50 次置换）
+    full_null_types: [Beta]  # 另做“供体偏移置换 + 比较组内打乱”的完全零模型的细胞类型
+  reliability:
+    min_cells_split: 4       # split-half：每位供体至少的细胞数（每半 ≥ 2）
+    split_draws: 500         # 随机 split-half 次数
+    n_boot: 1000             # 按供体重抽样次数
+    power_r: [0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.25, 0.3]
+    power_sims: 300          # 每个真实 r 的模拟次数
+    power_boot: 300          # 每次模拟内的供体重抽样次数
+    power_target: 0.8
+  training_size:
+    cell_type: Alpha
+    match_type: Beta         # 下采样到该类型的训练规模（每位供体细胞数分布按秩匹配）
+    fractions: [1.0]         # 相对 match_type 规模的倍数（1.0 = 同规模）
+    draws: 10                # 下采样次数（每次一个新的折划分）
+  technical:
+    variant_repeats: 5
+    hormones: {Beta: [GCG], Alpha: [INS]}   # 他类激素转录本 = 环境 RNA/混杂评分（SST、PPY 不在 HumanIslets α/β 矩阵的基因中）
+    own_hormone: {Beta: INS, Alpha: GCG}
+    batch_columns: [geo, site]
+    alphas: [0.01, 0.1, 1, 10, 100, 1000, 10000, 100000]
+
+learning_curve:              # Stage 04g：按训练供体数的学习曲线（只用开发供体；集成 cell_branch 与 ridge）
+  jobs: 60
+  cell_types: [Beta, Alpha]
+  endpoints: [exocytosis, early_exocytosis, late_exocytosis, size, sodium_current, calcium_entry]
+  fractions: [0.2, 0.4, 0.6, 0.8, 1.0]   # 每个外层折训练供体的保留比例（嵌套子集：小比例的供体是大比例的子集）
+  draws: 10                  # 抽样次数；第 d 次使用 Stage 03 第 d 个重复的折划分（种子 seed + 1000·d）
+  min_train_donors: 8        # 子集训练供体数下限（保证 5 折内层交叉验证每折 ≥ 1 位供体）
+  n_boot: 500                # 按留出供体重抽样次数（曲线各点、斜率与 100% − 20% 差值的置信区间）
+  models: [cell_branch, ridge]
+
+centre_null:                 # Stage 04h：分层（来源中心 / GEO series）供体层面置换零分布（开发供体）
+  jobs: 60
+  partitions: 2              # 与 Stage 04c 相同：置换 p 使用 Stage 03 第 (p mod partitions) 个重复的折划分
+  n_perm: 200                # 每个 细胞类型 × 终点 × 零模型 的置换次数
+  n_perm_priority: 500       # 下列重点组合的置换次数
+  priority: {Beta: [early_exocytosis, size, sodium_current], Alpha: [early_ca_current, late_ca_current]}
+  variants:                  # 名称: [模式, 分层变量]
+    site: [within, [site]]                 # 只在同一来源中心内的供体之间互换
+    site_geo: [within, [site, geo]]        # 更严格：同一中心且同一 GEO series 内互换
+    residual: [residual, [site, geo]]      # 供体偏移对 中心 + series 回归后的残差在全部供体间互换
+  models: [cell_branch, ridge]
+
+multiplicity:                # Stage 04i：模型比较的多重检验校正（汇总，不拟合模型）
+  fdr: 0.05                  # Benjamini–Hochberg 阈值；每个家族 = 来源表 × 划分/集合 × 参照 × 细胞类型 × 层面
+  sources: [03c_summary, 03e_sota, 03f_finetune]
+  recompute_references: [cell_branch]   # 另以集成为参照重算 Stage 03e 的全部配对差值（同一随机种子 → 同一组重抽样供体）
+  jobs: 36
+
+foundation:                  # Stage 03d：单细胞基础模型冻结嵌入（环境 islet_patchseq_fm，environment_fm.yml）
+  out_dir: data/interim/03d_embed
+  model_dir: data/models     # 权重存放处（data/ 可为指向大容量磁盘的符号链接）
+  gene_set: shared           # shared：六个计数矩阵共有的基因（避免某矩阵缺测基因造成的结构性零）
+  hgnc_url: https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt
+  hgnc_file: data/raw/reference/hgnc_complete_set.txt
+  models: [scgpt_human, geneformer_v2_104m, geneformer_v2_316m, uce_4layer, uce_33layer]
+  scgpt:
+    gdrive_folder: https://drive.google.com/drive/folders/1oWh_-ZRdhtoGQ2Fw24HP41FgLoomVo-y
+    max_length: 1200         # 官方默认：每个细胞随机抽取的非零基因数（含 <cls>）
+    batch_size: 64
+  geneformer:
+    hf_repo: ctheodoris/Geneformer
+    hf_revision: 1f7fbae4e469a5f4f1af8c111a529cfe1b3829f5
+    variants: {geneformer_v2_104m: Geneformer-V2-104M, geneformer_v2_316m: Geneformer-V2-316M}
+    emb_layer: -1            # 官方默认：倒数第二层，非填充基因 token 平均
+    batch_size: 16
+    nproc: 8
+  uce:
+    repo: https://github.com/snap-stanford/UCE.git
+    repo_commit: 9c416007be15ad6753dc84af4468c1dc10421ab9
+    figshare:
+      species_chrom.csv: https://figshare.com/ndownloader/files/42706558
+      species_offsets.pkl: https://figshare.com/ndownloader/files/42706555
+      all_tokens.torch: https://figshare.com/ndownloader/files/42706585
+      protein_embeddings.tar.gz: https://figshare.com/ndownloader/files/42715213
+      4layer_model.torch: https://figshare.com/ndownloader/files/42706576
+      33l_8ep_1024t_1280.torch: https://figshare.com/ndownloader/files/43423236
+    variants:
+      uce_4layer: {file: 4layer_model.torch, nlayers: 4, batch_size: 100}
+      uce_33layer: {file: 33l_8ep_1024t_1280.torch, nlayers: 33, batch_size: 8}   # 46 GB 显卡
+    sample_size: 1024        # 官方默认：按 log 表达加权有放回抽取的基因数
+    pad_length: 1536
+  sanity:
+    cv_folds: 5              # 细胞类型逻辑回归：按供体分组的折数
+    knn_k: 15                # kNN 供体混合度
+    pca_dims: 50             # 参照：log 归一化表达的主成分
+
+sota:                        # Stage 03e：新增对照（与 Stage 03 相同的 10 折 × 5 次留出供体划分，逐细胞配对）
+  jobs: 44                   # CPU 并行进程数（每进程 1 线程；与 GPU 部分同时运行时总数 ≤ 64）
+  gpus: [0, 2, 6, 7]         # 神经网络与 scVI 使用的 GPU
+  workers_per_gpu: 4         # 每块 GPU 上的并行进程数（神经网络）；scVI 每块 2 个
+  references: [context_model, ridge]   # 配对差值的参照模型（Stage 03 预测）
+  scvi:                      # scvi-tools 1.3.3，环境 islet_patchseq_scvi（environment_scvi.yml）
+    batch_key: geo           # 批次 = GEO series；不能用供体
+    n_latent: 20
+    n_hidden: 128
+    n_layers: 1
+    dropout_rate: 0.1
+    gene_likelihood: nb
+    max_epochs: 400
+    patience: 45             # 早停（scVI 内部按细胞随机留出 10% 验证）
+    train_size: 0.9
+    batch_size: 128
+    lr: 0.001
+  srrr:                      # 稀疏降秩回归（Kobak 等 2021），9 个终点联合
+    ranks: [1, 2, 3, 5, 9]   # 9 = 满秩（退化为行稀疏多任务弹性网）
+    l1_ratios: [0.5, 1.0]
+    n_lambda: 10
+    lambda_min_ratio: 0.01
+    max_alt: 30              # 每个 λ 的最大交替次数
+    tol: 0.001               # 拟合矩阵相对变化的收敛阈值
+  gbm_grid:                  # 梯度提升树：深度 × 学习率网格，迭代次数按内层验证误差曲线选择
+    max_depth: [2, 3, 4]
+    learning_rate: [0.03, 0.1]
+    max_iter: 600
+    l2_regularization: 1.0
+  mlp_grid:                  # 神经网络（四个变体各自调参）：宽度 × 权重衰减 × dropout
+    hidden: [128, 256]
+    weight_decay: [0.001, 0.01, 0.1]
+    dropout: [0.1, 0.4]
+  embeddings: [scgpt_human, geneformer_v2_104m, geneformer_v2_316m, uce_4layer, uce_33layer]  # 读取 foundation.out_dir/<名>.npz
+  boost_pcs: 50              # 表示头：梯度提升树使用的训练细胞主成分数（岭回归与供体分支用全部成分）
+
+finetune:                    # Stage 03f：基础模型微调（环境 islet_patchseq_fm）；全部设定在分析前固定，不按测试折调整
+  gpus: [0, 2, 6, 7]         # 每块 GPU 一个进程
+  repeats: [0]               # 交叉验证重复编号（与 Stage 03 的第 1 次重复相同的供体分折与折种子）
+  freeze_fraction: 0.5       # 冻结嵌入层与底部一半 Transformer 层，微调顶层一半（官方 freeze_layers 机制）
+  max_epochs: 10             # Geneformer 官方细胞分类微调与 scGPT 官方注释教程的默认轮数
+  patience: 3                # 早停：验证供体误差连续 3 个 epoch 无改善
+  min_delta: 0.0
+  warmup_fraction: 0.1       # 线性预热比例（按 max_epochs 的总步数），之后线性衰减到 0
+  weight_decay: 0.001        # Geneformer 官方默认
+  lr_head: 0.001             # 随机初始化的回归头
+  head_hidden: 128
+  head_dropout: 0.1
+  grad_clip: 1.0
+  workers: 2                 # 每个进程的数据加载子进程数
+  geneformer:
+    token_dataset: data/interim/03d_embed/_work/geneformer_v2_104m/tokens/cells.dataset   # Stage 03d 官方 tokenizer 输出（V2 词表，104M/316M 共用）
+  models:
+    geneformer_v2_104m: {family: geneformer, lr_backbone: 0.00005, batch_size: 12, micro_batch: 12, eval_batch: 24}   # 官方默认：lr 5e-5、batch 12
+    geneformer_v2_316m: {family: geneformer, lr_backbone: 0.00005, batch_size: 12, micro_batch: 6, eval_batch: 12}
+    scgpt_human: {family: scgpt, lr_backbone: 0.0001, batch_size: 32, micro_batch: 32, eval_batch: 64,
+                  max_length: 1200, eval_draws: 4}   # 官方注释教程 lr 1e-4、batch 32；官方嵌入默认 1200 个基因；预测取 4 次基因抽样平均
+  references: [cell_branch, context_model]   # 配对差值参照（Stage 03）；另与同一模型冻结嵌入的 cell_branch、ridge 头比较
+
+ps_faithful:                 # Stage 03g：Camunas-Soler 等 2020 预测基因集（PS）+ kNN 的折内忠实重建（github.com/jcamunas/patchseq）
+  splits: [donors, cells]    # 与 Stage 03 相同的留出供体折与按细胞随机折（同种子）
+  repeats: [0, 1, 2, 3, 4]
+  variants:                  # 训练（相关分析与 kNN 参照）所用细胞的糖代谢状态；null = 全部状态
+    ps_faithful_nd: [ND]     # 原文：只用非糖尿病供体的 β 细胞
+    ps_faithful_all: null    # 与本研究其他模型相同：全部训练细胞
+  min_cells: 5               # filter_genes_pp(min_cells=5, min_counts=10)，只用训练细胞
+  min_counts: 10
+  min_log2cpm_mean: 1.0      # 相关分析前：训练细胞平均 log2(CPM+1) > 1（原文 Methods）
+  min_log2cpm_median: 0.0    # PS 基因：训练细胞 log2(CPM+1) 中位数 > 0（Figure 3 笔记本）
+  quantiles: [0.03, 0.97]    # 相关分析前每个参数去掉两端 3% 的细胞
+  n_boot: 1000               # 按细胞有放回重抽样次数（原文 1000）
+  z_th: 2.0
+  n_blocks: 2                # |z|>2 的参数至少分属 2 个功能组
+  k: 5                       # kNN 近邻数；Spearman 相似度；等权
+  target_clip_q: 0.9         # 参照细胞目标值截到第 90 百分位（Figure 3 笔记本 ds_train 处理）
+  groups:                    # 原文功能组 → 本研究度量；原文的 Late Ca2+ conductance、Na+ conductance 本数据无对应度量
+    cell_size: [size]
+    exocytosis: [exocytosis, early_exocytosis, late_exocytosis, exocytosis_per_calcium]   # Exocytosis norm Ca2+ = 总胞吐 / Ca2+ 内流
+    calcium: [calcium_entry, early_ca_current, late_ca_current]
+    sodium: [sodium_current]
+  gpus: [1, 2, 3, 4, 6, 7]   # 只用当前显存占用 < 2 GB 的 GPU
+  workers_per_gpu: 3
+  references: [ps_faithful_nd]   # 配对差值：其他方法 − 忠实重建 PS
+
+geneset_raw:                 # Stage 03h：同一基因集对照与 GEO 原始计数敏感性分析
+  repeats: [0, 1, 2, 3, 4]   # 与 Stage 03 相同的留出供体划分
+  jobs: 40
+  fm_gene_file: data/interim/03d_embed/gene_mapping.tsv   # 基础模型所用的 8,244 个共有基因
+  raw_subset: geo            # 原始计数子集：cells.tsv 中 geo 列为 GEO series 的开发细胞（PANC-DB 细胞无 GEO 计数）
+  raw_min_total: 1           # GEO 计数总数为 0 的细胞（GEO 表中该列全零）无法比较，排除
+  raw_embedding: geneformer_v2_104m
+  embed_gpu: 1
+  references: [cell_branch]
+
+coupling:                    # Stage 04j：胞吐分解为 Ca²⁺ 可解释部分与 Ca²⁺–分泌偶联效率（残差），比较转录组对各部分的可预测性
+  cell_types: [Beta, Alpha]
+  targets: [exocytosis, early_exocytosis, late_exocytosis]          # 被分解的胞吐终点（log1p 尺度）
+  covariates: [calcium_entry, early_ca_current, late_ca_current, size]   # 细胞自身实测的 Ca²⁺ 内流、Ca²⁺ 电流与大小（与终点相同的变换）
+  ratio_entry: calcium_entry # 比值形式：log(胞吐 / Ca²⁺ 内流)，只用两者均 > 0 的细胞
+  repeats: [0, 1, 2, 3, 4]   # 与 Stage 03 相同的留出供体划分
+  models: [cell_branch, ridge]
+  n_boot: 1000               # 按留出供体重抽样（置信区间与终点间配对差值）
+  null_variants: {donor: null, site: [site]}   # 供体层面置换：全部供体间互换 / 只在同一来源中心内互换
+  n_perm: {Beta: 100, Alpha: 60}   # α 细胞为对照且细胞数约为 β 的 3.5 倍，置换次数与终点数相应减少
+  null_endpoints:
+    Beta: [calcium_entry, exocytosis, early_exocytosis, ca_explained_total, coupling_total,
+           ca_explained_early, coupling_early, ratio_total, ratio_early]
+    Alpha: [ca_explained_total, coupling_total, ca_explained_early, coupling_early]
+  partitions: 2              # 置换 p 使用 Stage 03 第 (p mod partitions) 个重复的折划分（同 Stage 04c）
+  perm_chunk: 5              # 每个并行作业处理的置换数
+  jobs: 60
+  null_jobs: 120
+  t2d_n_boot: 2000           # T2D 比较：状态 × 中心分层供体重抽样
+  t2d_n_perm: 2000           # 中心内 ND/T2D 供体标签置换
+  t2d_jobs: 32
+  gene_min_detect: 0.2       # 供体内基因关联：至少在该比例细胞中检出
+  gene_n_perm: 1000
+  gsea_perm: 1000
+  libraries: [MSigDB_Hallmark_2020, GO_Biological_Process_2025]
+
+islet_secretion:             # Stage 11：供体层面，Patch-seq 单细胞功能与同一供体胰岛胰岛素分泌（灌流、静态 GSIS）的关系
+  cell_types: [Beta, Alpha]
+  statuses: [ND, preT2D, T2D]        # 纳入的糖尿病状态（T1D 除外）；偏相关按 T2D 与糖尿病前期哑变量调整
+  min_cells: 3                       # 供体均值所需的最少细胞数（同 donor_level.min_cells）
+  min_donors: 15                     # 一对变量所需的最少供体数
+  prediction_model: cell_branch      # Stage 03 留出供体逐细胞预测中的岭–提升集成模型
+  perifusion_columns: [auc_baseline_3mmgluc, auc_gluc_6mmgluc, auc_gluc_15mmgluc, auc_gluc_30mmkcl,
+                       auc_leu_5mmleu, auc_olp_1p5mmolp]
+  gsis_protocol: "2.8_16.7"          # 静态 GSIS：2.8 → 16.7 mM 方案（49 位供体均有）
+  features: [positive_total, positive_early, positive_late, responding_total, coupling_total, coupling_early,
+             ca_explained_total, calcium_entry, sodium_current, size, predicted_exocytosis,
+             predicted_early_exocytosis]
+  primary:                           # 主要检验：β 细胞胞吐（实测、偶联效率、转录组预测）× 胰岛葡萄糖、KCl 与 GSIS 反应
+    cell_type: Beta
+    features: [positive_total, coupling_total, predicted_exocytosis]
+    outcomes: [peri_auc_gluc_15mmgluc, peri_auc_gluc_30mmkcl, gsis_log_stim_index]
+  n_boot: 2000                       # 按糖尿病状态分层的供体重抽样
+  n_perm: 5000                       # 置换（调整分析：状态内置换胰岛分泌值）
+  n_jobs: 32
+
+t2d_mechanism:               # Stage 09g：T2D β 细胞胞吐缺陷的定位与候选转录携带者（精选胞吐/颗粒基因、ETV1、Ca2+ 对数尺度校正、早晚期、葡萄糖）
+  panel_terms:               # 精选基因集：GO 生物过程 2025 中的 Ca2+ 调控胞吐、胰岛素分泌、囊泡停靠与引发、致密核心颗粒运输
+    - "Calcium-Ion Regulated Exocytosis (GO:0017156)"
+    - "Regulation of Calcium Ion-Dependent Exocytosis (GO:0017158)"
+    - "Insulin Secretion (GO:0030073)"
+    - "Insulin Secretion Involved in Cellular Response to Glucose Stimulus (GO:0035773)"
+    - "Synaptic Vesicle Docking (GO:0016081)"
+    - "Regulation of Synaptic Vesicle Priming (GO:0010807)"
+    - "Dense Core Granule Cytoskeletal Transport (GO:0099519)"
+  panel_extra: [ETV1, SENP1, STX1A, SNAP25, VAMP2, STXBP1, SYT7, RAB3A, RAB27A, UNC13A, PCLO, CADPS, CADPS2, CD59, PCSK1, PCSK2, CHGA, CHGB, SCG2, SCG3, SCG5, PTPRN, PTPRN2]
+  panel_min_detect: 0.2      # 至少在该比例的 β 细胞中检出（log 表达 > 0）
+  panel_pcs: 10              # 基因集主成分数（细胞层面）
+  panel_between_pcs: 3       # 基因集主成分的供体均值个数
+  candidate_gene: ETV1       # Camunas-Soler 2020：敲低后 T2D β 细胞胞吐恢复
+  sim_n_genes: 10            # 模拟：由基因集中 T2D 差异最大的 10 个基因（按方向加权平均）携带缺陷
+  sim_pi: [0.5, 1.0]
+  ca_lambdas: [1.0, 0.8, 0.6, 0.5, 0.4, 0.3, 0.2]
+  glucose_levels: [1, 5, 10]
+  n_boot: 1000
+  n_boot_sim: 500
+  nd_diag_endpoints: [exocytosis, early_exocytosis, late_exocytosis, size]
+  n_jobs: 32

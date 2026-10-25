@@ -1,0 +1,42 @@
+# 单细胞基础模型嵌入（stage 03d_embed）专用环境；依赖与主环境 islet_patchseq 冲突，故单独建立
+# 建立：conda env create -f environment_fm.yml
+# 之后安装 Geneformer 官方包（固定版本 1f7fbae4；包代码与权重都放在 data/models/geneformer）：
+#   python -c "from huggingface_hub import snapshot_download as s; s('ctheodoris/Geneformer', revision='1f7fbae4e469a5f4f1af8c111a529cfe1b3829f5', local_dir='data/models/geneformer', allow_patterns=['geneformer/*', 'setup.py', 'Geneformer-V2-104M/*', 'Geneformer-V2-316M/*'])"
+#   pip install --no-deps -e data/models/geneformer
+name: islet_patchseq_fm
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - torch==2.3.1
+      - torchtext==0.18.0
+      - numpy==1.26.4
+      - scipy==1.13.1
+      - pandas==2.2.2
+      - scikit-learn==1.5.1
+      - pyyaml==6.0.2
+      - anndata==0.10.8
+      - scanpy==1.10.2
+      - scgpt==0.2.4
+      - ipython==8.27.0
+      - transformers==4.46.3
+      - datasets==2.21.0
+      - accelerate==0.34.2
+      - peft==0.13.2
+      - loompy==3.0.7
+      - tdigest==0.5.2.2
+      - seaborn==0.13.2
+      - matplotlib==3.9.2
+      - optuna==4.0.0
+      - optuna-integration==4.0.0
+      - statsmodels==0.14.4
+      - tensorboard==2.18.0
+      - hyperopt==0.2.7
+      - ray==2.37.0
+      - bitsandbytes==0.44.1
+      - pyarrow==17.0.0
+      - gdown==5.2.0
+      - mygene==3.2.2
+      - huggingface_hub==0.26.2

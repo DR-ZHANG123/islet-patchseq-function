@@ -1,0 +1,13 @@
+resource	content	accession_or_url	used_in
+HumanIslets.com Patch-seq	single-cell expression (alpha/beta x 1/5/10 mM) and electrophysiology	https://www.humanislets.com (download endpoints api2.xialab.ca/api/patchscdownload)	stage 00, 01
+HumanIslets.com donor tables	donor characteristics, isolation, donor-level electrophysiology	https://www.humanislets.com (api2.xialab.ca/api/hitables)	stage 01
+HumanIslets.com islet perifusion	dynamic insulin secretion of the donors' islets (glucose 3/6/15 mM, KCl, leucine, oleate/palmitate; AUC summary table)	https://www.humanislets.com (api2.xialab.ca/api/hitables, table peri_gluc)	stage 00, 11
+GEO GSE124742	Patch-seq raw count table (Camunas-Soler 2020)	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE124742	stage 01 verification
+GEO GSE164875	Patch-seq raw count table and sample annotations (Dai 2022)	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE164875	stage 01
+GEO GSE270484	Patch-seq raw count table and sample annotations (Dos Santos 2025)	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE270484	stage 01
+PanKbase donor records	diagnosis, age, sex, BMI, HbA1c	https://api.data.pankbase.org	stage 01, 06c
+PanKbase integrated droplet atlas	summed beta/alpha profiles per sample	https://pankbase-data-v1.s3.us-west-2.amazonaws.com/processed_data/single_cell_RNA/scRNA_matrices	stage 06c
+ENA run reports	SRA run to study mapping (GSE221156 = PRJNA913127)	https://www.ebi.ac.uk/ena/portal/api/filereport	stage 00
+Dos Santos 2025 JCI supplement	donor table (Supplementary Table 1)	Europe PMC PMC12646676	stage 01
+Enrichr libraries	GO_Biological_Process_2025, MSigDB_Hallmark_2020	GSEApy get_library	stage 08
+Bandesh 2026 EMBO J supplement	Dataset EV7: beta-cell T2D vs ND differential expression (external T2D signature)	https://doi.org/10.1038/s44318-026-00744-w (MOESM10)	stage 09f

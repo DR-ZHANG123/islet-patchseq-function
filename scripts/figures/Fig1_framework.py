@@ -3,9 +3,8 @@
 a 同一细胞的两种读数（供体 → 胰岛 → 膜片钳细胞；转录组与电流/胞吐）；b 转录组编码什么（35 种模型、三个层面、留出供体）；
 c T2D 缺陷的问题（早期已引发颗粒 vs 晚期持续释放，Ca2+ 进入）；d 缺陷是否由转录组携带（独立图谱的 T2D 特征在同一批
 Patch-seq β 细胞中打分；实测差异与以转录组/胞吐基因为条件后的差异，只画问题、不画结果；校准）。
-文字、方框、箭头与示意曲线由代码生成（文字为可编辑文本）。图标：FIG_AI_ICONS=1（缺省随大写子图字母开启）时
-嵌入 assets/ai_icons/ 中 GPT-Image-2 生成的示意图标（图注与 AI 声明说明其来源）；否则用代码绘制的矢量图标
-（icons_vector.py；用于不接受 AI 生成图像的期刊）。输出与自查见 schematic.py。
+文字、方框、箭头与示意曲线由代码生成（文字为可编辑文本）。图标：缺省（FIG_AI_ICONS=1）嵌入 assets/ai_icons/ 中
+GPT-Image-2 生成的单个示意图标（图注与 AI 声明说明其来源）；FIG_AI_ICONS=0 时改用代码绘制的矢量图标（icons_vector.py）。输出与自查见 schematic.py。
 子图字母大小写由 FIG_PANEL_CASE 决定，输出目录由 FIG_OUT_DIR 决定（见 figstyle）。
 """
 from __future__ import annotations
@@ -29,9 +28,8 @@ AI_DIR = Path(__file__).resolve().parent / "assets" / "ai_icons"
 
 
 def use_ai_icons() -> bool:
-    """FIG_AI_ICONS=1/0 显式指定；缺省时大写子图字母用 AI 示意图标，小写用代码图标。"""
-    v = os.environ.get("FIG_AI_ICONS")
-    return v == "1" if v is not None else panel_case("a") == "A"
+    """缺省用 AI 生成的示意图标（两个期刊版本相同）；FIG_AI_ICONS=0 时用代码绘制的图标。"""
+    return os.environ.get("FIG_AI_ICONS", "1") == "1"
 
 
 def mini_scatter(c: Canvas, x, y, kind):

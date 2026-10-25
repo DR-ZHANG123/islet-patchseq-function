@@ -182,6 +182,15 @@ class Canvas:
             self.fig.savefig(out_stem.with_suffix(".png"), bbox_inches=None, pad_inches=0,
                              dpi=png_px / (self.W / 25.4), facecolor="white")
         plt.close(self.fig)
+        compact_svg(out_stem.with_suffix(".svg"))
         from PIL import Image                     # 记录 300 dpi，便于按物理尺寸置入
         png = out_stem.with_suffix(".png")
         Image.open(png).save(png, dpi=(300, 300))
+
+
+def compact_svg(path: Path) -> None:
+    """路径坐标截到 0.01 pt 并去掉换行（只改 d 属性，不动文字），描摹图标较多时控制 SVG 文件大小。"""
+    import re
+    t = path.read_text()
+    fix = lambda m: 'd="' + re.sub(r"\s+", " ", re.sub(r"(-?\d+\.\d{2})\d+", r"\1", m.group(1))).strip() + '"'
+    path.write_text(re.sub(r'd="([^"]*)"', fix, t))
